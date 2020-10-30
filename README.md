@@ -2,7 +2,7 @@
 
 ## 主旨
 
-期望每個禮拜至少一篇論文的survey，可能精讀也可能略讀，但都會是Top Conference，目前主要以NLP為主，可能偶爾穿插CV相關
+期望每個禮拜至少一篇論文的survey，可能精讀也可能略讀，但都會是Top Conference，目前主要以NLP為主，可能偶爾穿插CV相關，充實ML領域最新知識。
 
 Top Conference目前以 ACL, EMNLP, NAACL, AAAI, NIPS, CVPR, KDD...為主
 
