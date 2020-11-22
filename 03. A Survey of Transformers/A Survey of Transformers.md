@@ -19,6 +19,19 @@ $$Attention(Q,K,V)=softmax(\frac{QK^T}{\sqrt{d_k}})V $$
 
 這也意味著在訓練時，我們只能用更小的batch size以及較差的平行運算能力，這也導致模型對長文本的推理能力較差。
 
+## Sparse Transformers
 
+Generating Long Sequences with Sparse Transformers
 
+Paper: https://arxiv.org/pdf/1904.10509.pdf
+
+Authors: Rewon Child, Scott Gray, Alec Radford, Ilya Sutskever 
+
+這篇是OpenAI在2019年提出的新的transformer架構，其目的就是為了解決Vanilla Transformer的空間複雜度問題，將原本的$O(n^2)$降到$O(n\sqrt{n})$。
+
+![](img1.png)
+
+直接從圖簡單理解，b,c兩張圖是這篇paper提出的兩個方法，而想法為，不同於傳統的方法一次要跟所有token做attention，他們採用分組的方式，但組跟組之間也不是完全沒有關聯，淺藍色負責的就是整個sequence的attention。所以同一組之間的attention是強烈的，而長距離的attention可以透過加深神經網路的方式，讓相關的訊息互通，如此一來既能夠達到全局的attention也可以減少memory的使用。這樣的方法允許模型處理規模非常大的上下文。
+
+有一個疑問是，既然全局的attention需要用層層疊加的，那麼效率上是否會有影響呢？但或許Vanilla Transformer詬病的就是空間複雜度的問題，長文本的運算cost非常高，這篇的想法就是將降低空間複雜度視為當務之急吧！
 
