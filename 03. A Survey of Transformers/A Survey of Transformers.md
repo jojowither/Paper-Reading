@@ -52,6 +52,8 @@ Authors: Nikita Kitaev, Łukasz Kaiser, Anselm Levskaya
 
 ###  Locality-Sensitive Hashing Attention
 
+參考論文 https://arxiv.org/pdf/1509.02897.pdf
+
 在論文中先大概介紹了一下transformer中的Dot-product attention，並指出transformer中存在的弱點，其中一個討論很有趣，就是**Where do Q, K, V come from?**。我在理解transformer上對於為何要用QKV是這樣理解的，同一個tensor只是分別經過三個不同的線性轉換，轉成我們人類所定義的QKV，以符合Dot-product attention的公式。而在 LSH attention中，QK用同一個linear(即Q=K)，V用另一個，理解為QK的定義上更為相似，既然要省記憶體，那麼相似的事物共享同個神經網路也不為過吧。
 
 #### Hashing Attention
@@ -65,4 +67,25 @@ Authors: Nikita Kitaev, Łukasz Kaiser, Anselm Levskaya
 
 從上圖可以更快速理解，LSH透過計算hash func來實現這一點，該hash func將類似的向量配對在一起，而不是搜索所有可能的向量對。
 不同的顏色表示不同的hash-bucket，相似的單詞有相同的顏色。當hash value被分配時，sequence會被重新排列，同個hash value會被分在同一塊，每一塊長度一樣，然後排序，可以平行計算。然後將attention放在這些更短的chunks(以及它們的相鄰塊有同個hash value)中，從而大大減少了計算複雜度。
+
+LSH白話一點講就是，我們通過hash function映射變換操作，將原始資料集合分成了多個子集合，而每個子集合中的資料間是相鄰的且該子集合中的元素個數較小，因此將一個在超大集合內查找相鄰元素的問題轉化為了在一個很小的集合內查找相鄰元素的問題，顯然計算量下降了很多。
+
+###  Reversible Transformer
+
+這裡來解決記憶體使用的問題，在backpropagation中針對activation的存取做優化，如果可以不儲存activation(為了偏導用)，那麼可以減少GPU的使用。
+
+
+#### Reversible Residual Network(RevNets)
+RevNets就是當前層的activation結果可由下一層的結果計算得出，也就是如果我們知道網路最後一層的結果，就可以反推前面每一層的中間結果，這樣我們只需要存網路的參數和最後一層的結果即可，activation結果的儲存與網路的深度無關了，將大幅減少GPU的使用。
+
+**也就是說，用計算的時間去解掉存記憶體的空間**
+因為backpropagation中的activation要用後一層的結果去推算，省掉了存參數在GPU的空間，但增加了計算時間，但實際上這計算時間也不多啦
+
+延伸閱讀： https://ameroyer.github.io/reading-notes/architectures/2019/05/07/the_reversible_residual_network.html
+
+#### Chunking
+FeedForward 那裡仍然使用了大量的記憶體，但FeedForward各個位置之間的關係是獨立的，所以可以分塊，同樣的，也是為了去減少記憶體的使用。
+
+### Conclusion
+總結來說，Reformer完全是針對Transformer在長文本中的弱項做了全面的補強，在記憶體優化上用了許多的巧思，而這個切入點也很實際，可能一般的訓練集還沒有很多超長上下文的文本，但真實世界中，長文本無處不在，這個架構更符合落地的應用。
 
