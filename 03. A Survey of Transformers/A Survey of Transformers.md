@@ -89,3 +89,88 @@ FeedForward 那裡仍然使用了大量的記憶體，但FeedForward各個位置
 ### Conclusion
 總結來說，Reformer完全是針對Transformer在長文本中的弱項做了全面的補強，在記憶體優化上用了許多的巧思，而這個切入點也很實際，可能一般的訓練集還沒有很多超長上下文的文本，但真實世界中，長文本無處不在，這個架構更符合落地的應用。
 
+---
+
+## Transformer-XL
+
+Paper: https://arxiv.org/pdf/1901.02860.pdf
+
+Conference: ACL 2019
+
+Authors: Zihang Dai, Zhilin Yang, Yiming Yang, Jaime Carbonell, Quoc V. Le, Ruslan Salakhutdinov
+
+
+Transformer-XL是XLNet所使用的Transformer，也針對原本的transforemr做了改進。原本的transformer在長文本的表現上受限，只能使用固定長度的segments來處理長文本，又每個segments的處理都是獨立的，這是重點，因為是獨立的，所以先後segments彼此之間沒有關聯，即便他們是在同一段落。如果由我實際操作過的例子來講，在QA任務(squad格式的資料集)中，有一個stride參數，代表著如果輸入句子長度大於我設定的max_len，那麼第二段的起始結束位置會是[0+stride, max_len+stride]，也就是移動stride大小的長度當成下一段，但這下一段的資訊，跟前一段是沒有關聯的，在BERT QA中，假設輸入的文章要問的問題有10個，那麼第一段會問10個問題，第二段也是問同樣10個問題，即便這兩段閱讀上是有關聯的，而且問題是一模一樣的，但BERT會拆成兩段沒有關聯的文章當成input去訓練。
+
+![](img3.png)
+
+確實這樣的做法很不make sense，所以Transformer-XL主打的點就是當前segment是可以得到之前segment的訊息，也就是這篇所提出的segment-level recurrence mechanism，讓原先的Transformer具有recurrence的特性，而且因為recurrence的關係原先的絕對位置Encoding的方法不再適用，因此作者提出了relative positional encoding scheme解決了這個問題。
+
+### Segment Recurrence
+
+
+Formally, let the two consecutive segments of length $L$ be $s_τ = [x_{τ,1}, · · · , x_{τ,L}]$ and $s_{τ+1} = [x_{τ+1,1}, · · · , x_{τ+1,L}]$ respectively. Denoting the $n$-th layer hidden state sequence produced for the $τ$-th segment sτ by $h^n_τ ∈ R^{L×d}$, where d is the hidden dimension. Then, the $n$-th layer hidden state for segment $s_{τ+1}$ is produced (schematically) as follows,
+
+$$
+\mathrm{\widetilde{h}_{τ+1}^{n−1} = concat(StopGradient(h^{n-1}_{τ}), h^{n−1}_{τ+1})}\\
+\mathrm{q^{n}_{τ+1} = h^{n−1}_{τ+1}W^T_q}\\
+\mathrm{k^{n}_{τ+1} = \widetilde{h}^{n−1}_{τ+1}W^T_k}\\
+\mathrm{v^{n}_{τ+1} = \widetilde{h}^{n−1}_{τ+1}W^T_v}\\
+\mathrm{h^{n}_{τ+1}=Transformer{\text -} Layer(q^{n}_{τ+1}, k^{n}_{τ+1}, v^{n}_{τ+1})}
+$$
+
+
+​![](img4.png)
+
+Consequently, the largest possible dependency length grows linearly w.r.t. the number of layers as well as the segment length, i.e., $\mathrm{O(N × L)}$, as visualized by the shaded area in Fig. 2b.
+
+簡單來說，當前segment在當前層數的hidden state是由前一層前一個segment以及前一層當前segment所得到的，所以層數越多，所累積的歷史訊息就更多。
+
+假設N=640, L=16層，那麼Transformer-XL理論上可以得到10,240個token的訊息。
+
+然後StopGradient是為了避免使用大量的記憶體，因為沒使用StopGradient的話在BP時會用到大量的記憶體。
+
+### Relative Positional Encodings
+
+
+既然把input切成段了，那麼位置的encoding也要改變，就要改成relative positional encoding
+
+在這篇的實驗中，對於不同segment但同個位置的token，使用原本的Positional Encodings會造成模型分不出來這兩個不同的segment有什麼差別，也就是，我們還要提供不同的segment但同個index的差異性。
+
+
+In the standard Transformer (Vaswani et al., 2017), the attention score between query $q_i$ and key vector $k_j$ within the same segment can be decomposed as
+![](img5.png)
+
+
+In the equation above, $E_{xi}$ is the content-based embedding of token at location $i$, and $U_j$ is the position embedding for token $j$.
+
+a) relates the query's content with the key's content
+b) relates the query's content with the key's position
+c) relates the query's position with the key's content
+d) relates the query's position with the key's position
+
+
+而relative position encoding，作者調整了一些地方
+![](img6.png)
+
+在(b)和(d)中，$U_j$被取代成relative position counterpart $R_{i-j}$
+$R$ is a sinusoid encoding matrix (Vaswani et al.,2017) without learnable parameters.
+
+Separate the two weight matrices $W_{k,E}$,E​and $W_{k,R}$ ​for producing the content-based key vectors and location-based key vectors respectively.
+
+Since the query vector is the same for all query positions, it suggests that the attentive bias towards different words should remain the same regardless of the query position. So we replace $U^T_iW^T_q$ T​with trainable parameters $u$ and $v$.
+
+Under the new parameterization, each term has an intuitive meaning: term (a) represents content-based addressing, term (b) captures a content-dependent positional bias, term (c) governs a global content bias, and (d) encodes a global positional bias.
+
+N-layer Transformer-XL:
+
+$$
+\mathrm{\widetilde{h}_{τ}^{n−1} = concat(StopGradient(h^{n-1}_{τ-1}), h^{n−1}_{τ})}\\
+\mathrm{q^{n}_{τ} = h^{n−1}_{τ}W^T_q}\\
+\mathrm{k^{n}_{τ} = \widetilde{h}^{n−1}_{τ}W^T_k}\\
+\mathrm{v^{n}_{τ} = \widetilde{h}^{n−1}_{τ}W^T_v}\\
+A_{τ,i,j}^{n}​={q_{τ,i}^{n}}^\top​ k_{τ,j}^{n​}+{q_{τ,i}^{n}}^\top ​W_{k,R}^{n​}R_{i−j​}+{u}^\top k_{τ,j}​+v^\top W_{k,R}^n​R_{i−j}​\\
+a_τ^n​=Masked{\text -}Softmax(A_{τ,i,j}^{n​})v_τ^n\\
+​o_τ^n​=LayerNorm(Linear(a_τ^n​)+h_τ^{n−1}​) \\
+h_τ^n​=Positionwise{\text -}Feed{\text -}Forward(o_τ^n​)\\
+$$
