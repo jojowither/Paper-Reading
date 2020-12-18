@@ -174,3 +174,14 @@ a_τ^n​=Masked{\text -}Softmax(A_{τ,i,j}^{n​})v_τ^n\\
 ​o_τ^n​=LayerNorm(Linear(a_τ^n​)+h_τ^{n−1}​) \\
 h_τ^n​=Positionwise{\text -}Feed{\text -}Forward(o_τ^n​)\\
 $$
+
+
+---
+
+## Performer
+
+Rethinking Attention with Performers
+
+Paper: https://arxiv.org/pdf/2009.14794.pdf
+
+Authors: Krzysztof Choromanski, Valerii Likhosherstov, David Dohan, Xingyou Song, Andreea Gane, Tamas Sarlos, Peter Hawkins, Jared Davis, Afroz Mohiuddin, Lukasz Kaiser, David Belanger, Lucy Colwell, Adrian Weller 
