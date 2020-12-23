@@ -245,9 +245,7 @@ Bidirectional timing for the regular Transformer model in log-log plot with time
 圖片來源：https://arxiv.org/pdf/2009.06732.pdf
 
 參考資料：
-https://ai.googleblog.com/2020/10/
-
-rethinking-attention-with-performers.html
+https://ai.googleblog.com/2020/10/rethinking-attention-with-performers.html
 
 https://kexue.fm/archives/7921
 
