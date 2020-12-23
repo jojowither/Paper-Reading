@@ -185,3 +185,66 @@ Rethinking Attention with Performers
 Paper: https://arxiv.org/pdf/2009.14794.pdf
 
 Authors: Krzysztof Choromanski, Valerii Likhosherstov, David Dohan, Xingyou Song, Andreea Gane, Tamas Sarlos, Peter Hawkins, Jared Davis, Afroz Mohiuddin, Lukasz Kaiser, David Belanger, Lucy Colwell, Adrian Weller 
+
+此篇略讀
+
+本篇重點在於，將原本transforemr的空間複雜度$O(n^2)$降到線性的$O(n)$，而且理想情況下可以不用重新訓練模型，輸出結果也不會有明顯變化。方法是通過隨機投影將標準Attention的複雜度線性化。
+
+首先之前的方法依賴於稀疏注意力(sparse attention)，sparse attention是從段落區塊而不是整個文本所有可能的pair中計算相似度分數，從而減少了計算的時間和注意力機制的memory需求，但也因此稀疏矩陣不是完整矩陣。而sparse attention最大的缺點就是他必須疊更多的attention layers去補償sparse attention的稀疏訊息表示，也因此他需要retraining還有更大量的cost去運算。還有一些應用不能使用sparse attention，像是推薦系統，因為我們必須精準的計算similarity scores。
+
+而Performer就是為了避免這些問題，且加快訓練速度，同時允許模型處理更長的長度。來討論線性的Attention，我們先從Scaled-Dot Attention討論起
+
+$$
+Attention(\boldsymbol{Q},\boldsymbol{K},\boldsymbol{V}) = softmax\left(\boldsymbol{Q}\boldsymbol{K}^{\top}\right)\boldsymbol{V}
+$$
+
+$\boldsymbol{Q}, \boldsymbol{K}, \boldsymbol{V}\in\mathbb{R}^{n\times d}$
+
+一般情況下，$n>d$甚至$n\gg d$ (BERT base $d=64$)。而造成空間複雜度是$O(n^2)$，從而制約Attention效能的關鍵因素，其實是Softmax。$\boldsymbol{Q}\boldsymbol{K}^{\top}$這一步我們得到一個$n×n$的矩陣，就是這一步決定了Attention的複雜度是$O(n^2)$。如果沒有Softmax，那麼就是三個矩陣連乘$\boldsymbol{Q}\boldsymbol{K}^{\top}\boldsymbol{V}$，而矩陣乘法是滿足結合率的，所以我們可以先算$\boldsymbol{K}^{\top}\boldsymbol{V}$，得到一個$d×d$的矩陣，然後再用$Q$乘它，由於$d \ll n$，所以這樣算大致的複雜度只是$O(n)$，也就是Q占主導整個複雜度。也就是說，去掉Softmax的Attention的複雜度可以降到最理想的線性級別$O(n)$。
+
+問題來了，直接去掉Softmax還能算是Attention嗎？它還能有標準的Attention的效果嗎？為了回答這個問題，我們先將Scaled-Dot Attention的定義等價地改寫為
+$$
+Attention(\boldsymbol{Q},\boldsymbol{K},\boldsymbol{V})_i = \frac{\sum\limits_{j=1}^n e^{\boldsymbol{q}_i^{\top}\boldsymbol{k}_j}\boldsymbol{v}_j}{\sum\limits_{j=1}^n e^{\boldsymbol{q}_i^{\top}\boldsymbol{k}_j}}
+$$
+
+所以，Scaled-Dot Attention其實就是以$e^{\boldsymbol{q}_i^{\top}\boldsymbol{k}_j}$為權重對$v_j$做加權平均。所以我們可以提出一個Attention的一般化定義
+
+$$
+Attention(\boldsymbol{Q},\boldsymbol{K},\boldsymbol{V})_i = \frac{\sum\limits_{j=1}^n \text{sim}(\boldsymbol{q}_i, \boldsymbol{k}_j)\boldsymbol{v}_j}{\sum\limits_{j=1}^n \text{sim}(\boldsymbol{q}_i, \boldsymbol{k}_j)}
+$$
+
+也就是把$e^{\boldsymbol{q}_i^{\top}\boldsymbol{k}_j}$換成$\boldsymbol{q}_i, \boldsymbol{k}_j$的一般函數$\text{sim}(\boldsymbol{q}_i, \boldsymbol{k}_j)$，為了保留Attention相似的分佈特性，我們要求$\text{sim}(\boldsymbol{q}_i, \boldsymbol{k}_j)\geq 0$恆成立。也就是說，我們如果要定義新式的Attention，那麼要保留上面公式的形式，並且滿足$\text{sim}(\boldsymbol{q}_i, \boldsymbol{k}_j)\geq 0$。如果直接去掉Softmax，那麼就是$\text{sim}(\boldsymbol{q}_i, \boldsymbol{k}_j) = \boldsymbol{q}_i^{\top}\boldsymbol{k}_j$，問題是內積無法保證非負性，所以這還不是一個合理的選擇。
+
+一個自然的想法是：如果$\boldsymbol{q}_i,\boldsymbol{k}_j$的每個元素都是非負的，那麼內積自然也就是非負的。為了完成這點，我們可以給$\boldsymbol{q}_i,\boldsymbol{k}_j$各自加個激活函數$\phi,\varphi$，即$\text{sim}(\boldsymbol{q}_i, \boldsymbol{k}_j) = \phi(\boldsymbol{q}_i)^{\top} \varphi(\boldsymbol{k}_j)$。其中$\phi(\cdot),\varphi(\cdot)$是值域非負的激活函數。
+
+所以改成線性的Attention後，會變成
+$$\left(\phi(\boldsymbol{Q})\varphi(\boldsymbol{K})^{\top}\right)\boldsymbol{V}=\phi(\boldsymbol{Q})\left(\varphi(\boldsymbol{K})^{\top}\boldsymbol{V}\right)
+$$
+
+上式左端的複雜度依然是$O(n^2)$，由於矩陣乘法滿足結合律，我們可以先算後面兩個矩陣的乘法，這樣複雜度就可以降為$O(n)$。
+
+而Performer就是要尋找新的$\tilde{\boldsymbol{q}}, \tilde{\boldsymbol{k}}$，使得
+
+$$\text{sim}(\boldsymbol{q}, \boldsymbol{k}) \approx \tilde{\boldsymbol{q}}\cdot\tilde{\boldsymbol{k}}$$
+
+### Properties
+直接來看結果
+![](img7.png)
+Bidirectional timing for the regular Transformer model in log-log plot with time (T) and length (L). Lines end at the limit of GPU memory. The black line (X) denotes the maximum possible memory compression and speedups when using a “dummy” attention block, which essentially bypasses attention calculations and demonstrates the maximum possible efficiency of the model. The Performer model is nearly able to reach this optimal performance in the attention component.
+在長文本中，Perforemr比Transforemr來得有更多的優勢。
+
+![](img8.png)
+那能不能達到我們一開始的預期目標—不用重新訓練已訓練好的模型呢？很遺憾，不行，圖中顯示Performer直接load Transformer的權重不能恢復已有的結果，但經過finetune後可以迅速恢復回復。
+
+一個疑問，Performer如何保證向後兼容，即如何用訓練好的Transformer去初始化Performer？
+
+### Transformer分類圖
+![](img9.png)
+![](img10.png)
+其中decode那一欄指的是能否mask掉未來的訊息，用於語言模型
+圖片來源：https://arxiv.org/pdf/2009.06732.pdf
+
+參考資料：
+https://ai.googleblog.com/2020/10/rethinking-attention-with-performers.html
+https://kexue.fm/archives/7921
+https://arxiv.org/pdf/2009.06732.pdf
